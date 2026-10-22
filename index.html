@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>一二三，木头人 · 小苹果篇</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0b0916;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    position: fixed;
+    inset: 0;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  #stage {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    width: min(100vw, calc(100dvh * 16 / 9));
+    height: min(100dvh, calc(100vw * 9 / 16));
+  }
+  canvas {
+    display: block;
+    width: 100%; height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  /* ---------- UI 覆盖层：按钮全是真实 DOM，手机上点击区域不受画布缩放影响 ---------- */
+  #ui {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+    font-size: clamp(12px, 1.45vmin + 5px, 17px);
+  }
+  .ui-btn {
+    pointer-events: auto;
+    font: inherit; font-size: 1em; font-weight: 700;
+    color: #ffd76e;
+    background: rgba(30, 24, 52, 0.72);
+    border: 1px solid rgba(255, 215, 110, 0.32);
+    border-radius: 10px;
+    padding: 0.5em 0.85em;
+    min-height: 2.4em;
+    white-space: nowrap;
+    cursor: pointer;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    transition: background 0.14s, transform 0.08s, opacity 0.14s;
+  }
+  .ui-btn:hover { background: rgba(52, 42, 84, 0.85); }
+  .ui-btn:active { transform: scale(0.95); }
+  .ui-btn.hide { display: none; }
+  @media (pointer: coarse) {
+    /* 触摸设备：放大到 44px 以上的可点区域 */
+    .ui-btn { min-height: 44px; padding: 0 1.1em; border-radius: 12px; }
+  }
+
+  #toolbar {
+    position: absolute; top: 12px; right: 14px;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+
+  /* ---------- 暂停面板 ---------- */
+  #pausePanel {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 0.9em;
+    background: rgba(8, 6, 18, 0.78);
+    pointer-events: auto;
+  }
+  #pausePanel.show { display: flex; }
+  #pausePanel h2 {
+    margin: 0; font-size: 2.1em; color: #f3ecdd; letter-spacing: 0.12em;
+    text-shadow: 0 2px 0 rgba(40, 28, 52, 0.6);
+  }
+  #pausePanel p { margin: 0; font-size: 1em; color: rgba(207, 199, 184, 0.75); }
+  #pausePanel .row { display: flex; gap: 0.7em; flex-wrap: wrap; justify-content: center; margin-top: 0.5em; }
+  #pausePanel .ui-btn.main {
+    background: rgba(255, 215, 110, 0.92); color: #241c3c; border-color: transparent;
+    font-size: 1.1em; padding: 0.6em 1.6em;
+  }
+  #pausePanel .ui-btn.main:hover { background: #ffe08f; }
+
+  /* ---------- 手机操作提示（左右两个方向键） ---------- */
+  #paddles { display: none; }
+  #paddles.show { display: block; }
+  #paddles .paddle {
+    position: absolute; bottom: 14px;
+    width: 20vmin; height: 20vmin; max-width: 104px; max-height: 104px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 5vmin; color: rgba(255, 255, 255, 0.55);
+    background: rgba(24, 18, 44, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.16);
+    border-radius: 50%;
+  }
+  #paddles .paddle.left { left: 16px; }
+  #paddles .paddle.right { right: 16px; }
+
+  /* ---------- 竖屏提示 ---------- */
+  #rotate {
+    position: fixed; inset: 0; z-index: 9;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0.6em;
+    background: #0b0916; color: #f3ecdd; text-align: center;
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  #rotate .rot-ico { font-size: 3rem; animation: rot 2s ease-in-out infinite; }
+  @keyframes rot { 0%, 45% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+  #rotate p { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em; }
+  #rotate small { color: rgba(207, 199, 184, 0.6); }
+  #rotate .ui-btn { margin-top: 0.8rem; }
+  @media (orientation: portrait) and (max-width: 820px) {
+    #rotate { display: flex; }
+  }
+  #rotate.off { display: none !important; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="960" height="540"></canvas>
+  <div id="ui">
+    <div id="toolbar">
+      <button class="ui-btn" id="btnColl">图鉴 T</button>
+      <button class="ui-btn" id="btnPause">暂停 ESC</button>
+      <button class="ui-btn" id="btnRestart">重来 R</button>
+    </div>
+    <div id="pausePanel">
+      <h2>已暂停</h2>
+      <p>他还站在那儿等着，别急。</p>
+      <div class="row">
+        <button class="ui-btn main" id="btnResume">继续</button>
+        <button class="ui-btn" id="btnRestart2">重来</button>
+        <button class="ui-btn" id="btnHome">回到标题</button>
+      </div>
+    </div>
+    <div id="paddles">
+      <div class="paddle left">◀</div>
+      <div class="paddle right">▶</div>
+    </div>
+  </div>
+  <div id="rotate">
+    <div class="rot-ico">📱</div>
+    <p>把手机横过来玩</p>
+    <small>这是个横屏游戏，横过来画面才够大</small>
+    <button class="ui-btn" id="btnRotateSkip">还是想竖着玩</button>
+  </div>
+</div>
+<script>
+"use strict";
+/* ======================================================================
+   一二三，木头人 · 小苹果篇
+   海森先闭眼背身，卡维趁他闭眼往前挪；海森一睁眼必须立刻定住。
+   碰到海森即换人：卡维闭眼，海森去碰他。谁先被抓光 3 颗心，游戏结束。
+   纯前端零依赖，浏览器打开即玩。
+   ====================================================================== */
+
+const cvs = document.getElementById("game");
+const ctx = cvs.getContext("2d");
+const W = 960, H = 540;
+ctx.imageSmoothingEnabled = false;
+
+/* ---------------- 常量 ---------------- */
+const GROUND_Y   = 476;            // 角色脚底基准线
+const SPR_W = 152, SPR_H = 160;    // 38x40 原生素材 x4 整数放大
+const MOVER_START_X = 130;         // 移动者出发点（中心）
+const WATCHER_X = 800;             // 闭眼者站位（中心）
+const TOUCH_X = 660;               // 走到这里就算碰到
+const SPEED = 175;                 // 前进速度 px/s
+const CATCH_PX = 22;               // 睁眼期间累计位移超过该值 = 被抓
+const OPEN_GRACE = 0.06;           // 睁眼后的反应宽限（这段时间内的位移不计）
+const MIN_SHUT = 1.0;              // 闭眼窗口下限：防止节奏碎成"频闪"
+const NEAR_FACTOR = 0.75;          // 靠近时闭眼窗口缩短系数（别太狠）
+const TURNING_T = 0.32;            // 回头前摇时长
+const CLEAR_T = 1.4, SWAP_T = 1.3, CAUGHT_T = 1.0;
+const PRIZE_EVERY = 3;             // 每累计成功碰到对方 3 次，抽一次奖品
+const PRIZE_T = 3.4;               // 奖品展示停留时长
+
+const CHARS = {
+  haitham: { name: "海森", tint: "#a8c657", open: null, shut: null, shutDim: null },
+  kaveh:   { name: "卡维", tint: "#e0605a", open: null, shut: null, shutDim: null },
+};
+
+/* ---------------- 奖品系统 ----------------
+   每累计成功 3 次抽一次奖；未解锁的奖品抽中权重更高。
+   卡维内裤与？？？是用户的原图（assets/prize_*.png），其余为同款风格的程序像素画。 */
+const PRIZES = [
+  {
+    id: "kaveh_briefs", name: "卡维的内裤", img: "assets/prize_kaveh.png",
+    desc: "纯白，再普通不过，但胜在干净。至于为什么会出现在奖品池，两个人都拒绝回答。",
+  },
+  {
+    id: "mystery", name: "？？？", img: "assets/prize_mystery.png",
+    desc: "一款不怎么用得上的产品。",
+  },
+  {
+    id: "golden_apple", name: "金苹果",
+    px: ["......LL......", ".....LLL......", "....DDDDDD....", "..DDKKKKKKDD..", ".DKKWWKKKKKKD.", ".DKWWKKKKKKKD.",
+         "DKKKKKKKKKKKKD", "DKKKKKKKKKKKKD", "DKKKKKKKKKKKKD", "DKKKKKKKKKKKKD", "DKKKKKKKKKKKKD",
+         ".DKKKKKKKKKKD.", "..DDKKKKKKDD..", "...DDDDDDDD..."],
+    pal: { D: "#8a5f0e", K: "#f5c542", W: "#fff3c4", L: "#5d9c3c" },
+    desc: "木头人大赛的传家宝奖杯。咬一口据说能好运一整天，但至今没人敢咬。",
+  },
+  {
+    id: "apple_core", name: "苹果核",
+    px: ["...DDDDDD...", "..DWWWWWWD..", ".DWWWWWWWWD.", ".DWWDDDDWWD.", ".DWDSSDDSDW.", ".DWDSSDDSDW.",
+         ".DWWDDDDWWD.", ".DWWWWWWWWD.", "..DWWWWWWD..", "...DWWWWD...", "....DWWD....", ".....DD....."],
+    pal: { D: "#8f7a4e", W: "#f2ead2", S: "#5a4632" },
+    desc: "某轮比赛结束后的下午茶残骸。是谁啃的，两个人互相推了三回合。",
+  },
+  {
+    id: "sock", name: "另一只袜子",
+    px: ["....DDDDDD....", "...DSSSSSSD...", "...DSSSSSSD...", "...DWWWWWWD...", "...DWWWWWWD...",
+         "...DWWWWWWD...", "...DWWWWWWDD..", "..DDWWWWWWWDD.", ".DWWWWWWWWWWWD", ".DWWWWWWWWWWWD",
+         ".DWWWWWWWWWWWD", "..DWWWWWWWWWD.", "...DDDDDDDDD.."],
+    pal: { D: "#9aa0b0", S: "#c9cfe0", W: "#f4f2ec" },
+    desc: "单只出售。另一只存在于世界的某个角落，也可能不存在。",
+  },
+  {
+    id: "mint_candy", name: "会化的薄荷糖",
+    px: ["....DDDDD....", "..DDMMMMMDD..", ".DMMMWWWMMMD.", ".DMMWWWWWMMD.", "DMMWWWWWWWMMD",
+         "DMMWWWWWWWMMD", "DMMWWWWWWWMMD", ".DMMWWWWWMMD.", ".DMMMWWWMMMD.", "..DDMMMMMDD..",
+         "....DMMMD....", "....DMMMD....", "..DDMMMMMDD..", "..DDDDDDDDD.."],
+    pal: { D: "#7fb8a8", M: "#bfe6d8", W: "#f7fffb" },
+    desc: "抓住它的瞬间就开始化。奖励是让你凉一下，仅限一下。",
+  },
+  {
+    id: "sticker", name: "安慰奖贴纸",
+    px: [".DDDDDDDDDDD.", "DSSSSSSSSSSSD", "DSSSSSWSSSSSD", "DSSSSWWWSSSSD", "DSSWWWWWWWSSD",
+         "DSSWWWWWWWSSD", "DSSSSWWWSSSSD", "DSSSWWWWWSSSD", "DSSWWSSSWWSSD", "DSWSSSSSSSWSD",
+         "DSSSSSSSSSSSD", "DSSSSSSSSSSSD", ".DDDDDDDDDDD."],
+    pal: { D: "#5f86ad", S: "#9ec7e8", W: "#ffffff" },
+    desc: "集满十张，可以兑换一张新的安慰奖贴纸。",
+  },
+  {
+    id: "crown", name: "塑料小皇冠",
+    px: [".C....C....C.", ".CC..CCC..CC.", ".CCC.CCC.CCC.", ".CCCCCCCCCCC.",
+         ".CRRRRRRRRRC.", ".CRGGBBGGRRC.", ".CCCCCCCCCCC."],
+    pal: { C: "#f0c53a", R: "#c8453e", G: "#4d9e4d", B: "#3f6fc4" },
+    desc: "一二三木头人世界巡回赛冠军限定。预算有限，是塑料的，但闪闪发光。",
+  },
+];
+
+// 字符像素图 → canvas（1 像素 = 1 格，绘制时整数放大保持锐利）
+function pxSprite(rows, pal) {
+  const h = rows.length, w = rows[0].length;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const col = pal[rows[y][x]];
+    if (!col) continue;
+    g.fillStyle = col;
+    g.fillRect(x, y, 1, 1);
+  }
+  return c;
+}
+for (const p of PRIZES) if (p.px) p.el = pxSprite(p.px, p.pal);
+
+function rollPrize() {
+  const ws = PRIZES.map((p) => (unlocked.includes(p.id) ? 1 : 4));
+  let r = Math.random() * ws.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < PRIZES.length; i++) { r -= ws[i]; if (r <= 0) return PRIZES[i]; }
+  return PRIZES[PRIZES.length - 1];
+}
+
+function grantPrize() {
+  const p = rollPrize();
+  if (!unlocked.includes(p.id)) {
+    unlocked.push(p.id);
+    if (PERSIST) localStorage.setItem("mtr_prizes", JSON.stringify(unlocked));
+  }
+  lastPrize = p;
+  pendingPrize = true;
+  tlog("奖品解锁 -> " + p.name);
+}
+
+/* ---------------- 音效（WebAudio 合成，无外部文件） ---------------- */
+const AudioFX = {
+  ctx: null, muted: false,
+  init() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+    if (this.ctx) BGM.start();
+  },
+  tone(freq, dur, type, vol, slideTo) {
+    if (this.muted || !this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || "sine";
+    o.frequency.setValueAtTime(freq, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    g.gain.setValueAtTime(vol || 0.15, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  },
+  open()  { this.tone(1244, 0.14, "sine", 0.22); this.tone(1660, 0.10, "sine", 0.10); },
+  glance(){ this.tone(1046, 0.07, "sine", 0.12); },
+  turning(){ this.tone(330, 0.06, "square", 0.05); this.tone(415, 0.06, "square", 0.05); },
+  caught(){ this.tone(180, 0.5, "sawtooth", 0.28, 55); },
+  clear() { this.tone(523, 0.12, "sine", 0.2); setTimeout(() => this.tone(659, 0.12, "sine", 0.2), 110); setTimeout(() => this.tone(784, 0.2, "sine", 0.22), 220); },
+  swap()  { this.tone(440, 0.1, "triangle", 0.14); },
+  step()  { this.tone(190 + Math.random() * 30, 0.04, "triangle", 0.05); },
+  prize() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.tone(f, 0.16, "triangle", 0.18), i * 95)); },
+};
+
+/* ---------------- BGM（WebAudio 合成的可爱电子循环，无外部文件） ----------------
+   C 大调 · 116 BPM · 8 小节：断奏方波旋律 + 跳动八度贝斯 + 轻 kick/hihat。
+   lookahead 调度器驱动，随 AudioContext 初始化启动，M 键 / 页面隐藏时静音。 */
+const BGM = {
+  started: false, timer: null, nextT: 0, step: 0, gain: null, BPM: 116,
+  lead: [
+    "E5 G5 C6 .  G5 .  E5 G5",
+    "D5 F5 B5 .  G5 .  D5 F5",
+    "C5 E5 A5 .  E5 .  C5 E5",
+    "F5 A5 C6 .  A5 F5 D5 F5",
+    "E5 G5 C6 .  G5 .  E5 G5",
+    "D5 G5 B5 .  G5 .  D5 G5",
+    "C6 A5 F5 A5 C6 .  D6 . ",
+    "B5 G5 D5 G5 B5 .  C6 . ",
+  ].map((s) => s.split(/\s+/).map((n) => (n === "." ? null : n))),
+  bass: [
+    "C3 C4 C3 C4 C3 C4 C3 C4",
+    "G2 G3 G2 G3 G2 G3 G2 G3",
+    "A2 A3 A2 A3 A2 A3 A2 A3",
+    "F2 F3 F2 F3 F2 F3 F2 F3",
+    "C3 C4 C3 C4 C3 C4 C3 C4",
+    "G2 G3 G2 G3 G2 G3 G2 G3",
+    "F2 F3 F2 F3 F2 F3 F2 F3",
+    "G2 G3 G2 G3 G2 G3 G2 G3",
+  ].map((s) => s.split(/\s+/)),
+  note(name) {
+    const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+    const oct = +name.slice(-1);
+    return 440 * Math.pow(2, (SEMI[name[0]] + (oct + 1) * 12 - 69) / 12);
+  },
+  start() {
+    if (this.started || !AudioFX.ctx) return;
+    this.started = true;
+    this.gain = AudioFX.ctx.createGain();
+    this.gain.gain.value = AudioFX.muted ? 0 : 0.5;
+    this.gain.connect(AudioFX.ctx.destination);
+    this.nextT = AudioFX.ctx.currentTime + 0.15;
+    this.timer = setInterval(() => this.schedule(), 40);
+  },
+  schedule() {
+    if (!AudioFX.ctx) return;
+    const spb = 60 / this.BPM / 2;   // 八分音符时长
+    while (this.nextT < AudioFX.ctx.currentTime + 0.18) {
+      this.playStep(this.step, this.nextT, spb);
+      this.step = (this.step + 1) % 64;
+      this.nextT += spb;
+    }
+  },
+  playStep(s, t, spb) {
+    const bar = Math.floor(s / 8), i = s % 8;
+    const L = this.lead[bar][i];
+    if (L) this.voice("square", this.note(L), t, spb * 0.92, 0.055);
+    const B = this.bass[bar][i];
+    if (B) this.voice("triangle", this.note(B), t, spb * 0.8, 0.075);
+    if (i === 0 || i === 4) this.kick(t);
+    if (i % 2 === 1) this.hat(t);
+  },
+  voice(type, f, t, dur, vol) {
+    const c = AudioFX.ctx;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.gain);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  kick(t) {
+    const c = AudioFX.ctx;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    o.connect(g).connect(this.gain);
+    o.start(t); o.stop(t + 0.16);
+  },
+  hat(t) {
+    const c = AudioFX.ctx;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = "square"; o.frequency.value = 7800;
+    g.gain.setValueAtTime(0.02, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    o.connect(g).connect(this.gain);
+    o.start(t); o.stop(t + 0.04);
+  },
+  setMuted(m) { if (this.gain) this.gain.gain.value = m ? 0 : 0.5; },
+};
+
+/* ---------------- 测试模式（URL 参数）----------------
+   ?autostart=1  跳过标题直接开局
+   ?demo=1       自动玩家：闭眼走、睁眼停（验证通关换人流程）
+   ?demo=2       自动玩家故意在睁眼时硬闯（验证被抓流程）
+----------------------------------------------------- */
+const Q = new URLSearchParams(location.search);
+const DEMO = +(Q.get("demo") || 0);
+const TRACE = Q.has("trace");   // ?trace=1 在控制台打印闭眼者状态切换时间，便于排查节奏问题
+let gameTime = 0;
+function tlog(msg) {
+  if (TRACE) console.log("[trace] t=" + gameTime.toFixed(2) + " state=" + state + " round=" + round
+    + " phase=" + watcherSt.phase + " moverX=" + Math.round(moverX) + " " + msg);
+}
+
+/* ---------------- 全局状态 ---------------- */
+let state = "title";               // title | play | caught | clear | swap | over
+let mover = "kaveh", watcher = "haitham";
+let moverX = MOVER_START_X;
+let score = { haitham: 0, kaveh: 0 };
+let hearts = 3;
+let round = 1;                     // 换人次数 +1，决定难度
+let best = +(localStorage.getItem("mtr_best") || 0);
+
+const watcherSt = { phase: "shut", t: 0, shutDur: 2, openDur: 1, glances: 0, glanceAt: -1, glanceDone: false, openIsGlance: false };
+let stateT = 0;                    // 当前状态计时
+let openMoveAcc = 0;               // 睁眼期间累计位移
+let stepTimer = 0;
+let blinkTimer = 1.5, blinkOn = 0; // 移动者随机眨眼
+let moverBlinkHold = false;        // 定住时强制闭眼
+
+let shake = 0, flash = 0, dangerGlow = 0;
+let particles = [];
+let caughtCount = 0;
+
+// 标题画面两个苹果各自的眨眼
+const titleBlink = { haitham: { t: 2, on: 0 }, kaveh: { t: 3, on: 0 } };
+
+// 奖品进度与图鉴（跨局持久化；?prize=4 测试参数下只读不写，避免污染真实存档）
+let pendingPrize = false, lastPrize = null, collectionOpen = false;
+let prizeProgress = Math.min(PRIZE_EVERY - 1, Math.max(0, +(localStorage.getItem("mtr_prize_prog") || 0) || 0));
+let unlocked = [];
+try { unlocked = JSON.parse(localStorage.getItem("mtr_prizes") || "[]"); } catch (e) { unlocked = []; }
+// 只保留当前奖品池里存在的 id（旧存档里被移除的奖品自动失效）
+const VALID_IDS = PRIZES.map((p) => p.id);
+unlocked = unlocked.filter((id) => VALID_IDS.includes(id));
+if (Q.has("prize")) prizeProgress = Math.max(0, Math.min(PRIZE_EVERY - 1, +Q.get("prize") || PRIZE_EVERY - 1));
+if (Q.get("unlock") === "all") unlocked = PRIZES.map((p) => p.id);
+else if (Q.has("unlock")) unlocked = PRIZES.slice(0, Math.max(0, +Q.get("unlock") || 0)).map((p) => p.id);
+if (Q.has("coll")) collectionOpen = true;
+const PERSIST = !Q.has("prize");
+
+// 星空
+const stars = Array.from({ length: 70 }, () => ({
+  x: Math.random() * W, y: Math.random() * 300,
+  r: Math.random() < 0.2 ? 2 : 1, tw: Math.random() * Math.PI * 2, sp: 0.6 + Math.random() * 1.4,
+}));
+
+/* ---------------- 输入 ---------------- */
+const keys = {};
+let touchDir = 0;
+const inputRight = () => keys.ArrowRight || keys.KeyD || touchDir > 0;
+const inputLeft  = () => keys.ArrowLeft  || keys.KeyA || touchDir < 0;
+
+/* 触摸设备判定：粗指针 / 有触摸事件 / ?touch=1 强制开启 */
+const TOUCH_MODE = (window.matchMedia && matchMedia("(pointer: coarse)").matches)
+  || ("ontouchstart" in window) || Q.has("touch");
+
+const $ = (id) => document.getElementById(id);
+const ui = {
+  toolbar: $("toolbar"), coll: $("btnColl"), pause: $("btnPause"), restart: $("btnRestart"),
+  panel: $("pausePanel"), resume: $("btnResume"), restart2: $("btnRestart2"), home: $("btnHome"),
+  paddles: $("paddles"), rotate: $("rotate"),
+};
+
+let paused = false;
+
+function applyMute() { BGM.setMuted(AudioFX.muted || document.hidden || paused); }
+
+/* UI 状态同步：只在关键状态变化时写 DOM（每帧调用也很便宜） */
+let uiKey = "";
+function syncUI() {
+  const key = state + "|" + (paused ? 1 : 0) + "|" + (collectionOpen ? 1 : 0);
+  if (key === uiKey) return;
+  uiKey = key;
+  const inGame = state !== "title" && state !== "over";
+  ui.pause.classList.toggle("hide", !inGame);
+  ui.restart.classList.toggle("hide", !inGame);
+  ui.panel.classList.toggle("show", paused);
+  ui.paddles.classList.toggle("show", TOUCH_MODE && inGame && !paused && !collectionOpen);
+  ui.coll.textContent = collectionOpen ? "关闭图鉴 T" : "图鉴 T";
+}
+
+function togglePause(force) {
+  if (state === "title" || state === "over") return;   // 标题/结算没有可暂停的东西
+  const want = force === undefined ? !paused : !!force;
+  if (want === paused) return;
+  paused = want;
+  if (paused) { touchDir = 0; movePointers.clear(); }
+  applyMute();
+  syncUI();
+  tlog(paused ? "暂停" : "继续");
+}
+
+function restart() {
+  if (state === "title") return;
+  paused = false;
+  collectionOpen = false;
+  keys.ArrowLeft = keys.ArrowRight = keys.KeyA = keys.KeyD = false;
+  touchDir = 0; movePointers.clear();
+  startGame();
+  applyMute();
+  syncUI();
+  tlog("重来");
+}
+
+function toTitle() {
+  paused = false;
+  collectionOpen = false;
+  state = "title"; stateT = 0;
+  touchDir = 0; movePointers.clear();
+  applyMute();
+  syncUI();
+  tlog("回到标题");
+}
+
+addEventListener("keydown", (e) => {
+  AudioFX.init();
+  if (e.code === "KeyM") { AudioFX.muted = !AudioFX.muted; applyMute(); return; }
+  if (e.code === "KeyT") { collectionOpen = !collectionOpen; syncUI(); return; }
+  if (e.code === "Escape" || e.code === "KeyP") {
+    if (collectionOpen) { collectionOpen = false; syncUI(); return; }
+    togglePause();
+    return;
+  }
+  if (collectionOpen) return;
+  if (state === "prize") { stateT = PRIZE_T; return; }   // 任意键跳过奖品展示
+  if (e.code === "KeyR") { restart(); return; }          // 随时重来（标题页除外）
+  keys[e.code] = true;
+  if (state === "title" || state === "over") { if (e.code === "Enter" || e.code === "Space") startGame(); }
+});
+addEventListener("keyup", (e) => { keys[e.code] = false; });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) togglePause(true);   // 切走时自动暂停，别让他在看不见的地方回头
+  applyMute();
+});
+
+/* 触摸/鼠标多点：每个指针各自记方向，抬起后回落到仍按住的那个 */
+const movePointers = new Map();
+let lastPointerId = null;
+function refreshTouchDir() {
+  if (lastPointerId !== null && movePointers.has(lastPointerId)) { touchDir = movePointers.get(lastPointerId); return; }
+  const vals = [...movePointers.values()];
+  touchDir = vals.length ? vals[vals.length - 1] : 0;
+  if (!movePointers.size) lastPointerId = null;
+}
+function pointerDir(e) {
+  const rect = cvs.getBoundingClientRect();
+  return (e.clientX - rect.left) / rect.width < 0.5 ? -1 : 1;
+}
+cvs.addEventListener("pointerdown", (e) => {
+  AudioFX.init();
+  if (e.cancelable) e.preventDefault();
+  if (collectionOpen) { collectionOpen = false; syncUI(); return; }
+  if (state === "prize") { stateT = PRIZE_T; return; }
+  if (paused) return;
+  if (state === "title") { startGame(); syncUI(); return; }
+  if (state === "over")  { startGame(); syncUI(); return; }
+  movePointers.set(e.pointerId, pointerDir(e));
+  lastPointerId = e.pointerId;
+  refreshTouchDir();
+});
+addEventListener("pointerup", (e) => { movePointers.delete(e.pointerId); refreshTouchDir(); });
+addEventListener("pointercancel", (e) => { movePointers.delete(e.pointerId); refreshTouchDir(); });
+addEventListener("contextmenu", (e) => { if (e.target === cvs) e.preventDefault(); });
+
+/* UI 按钮接线 */
+ui.coll.addEventListener("click", () => { AudioFX.init(); collectionOpen = !collectionOpen; syncUI(); });
+ui.pause.addEventListener("click", () => { AudioFX.init(); togglePause(); });
+ui.restart.addEventListener("click", () => { AudioFX.init(); restart(); });
+ui.resume.addEventListener("click", () => { AudioFX.init(); togglePause(false); });
+ui.restart2.addEventListener("click", () => { AudioFX.init(); restart(); });
+ui.home.addEventListener("click", () => { AudioFX.init(); toTitle(); });
+$("btnRotateSkip").addEventListener("click", () => ui.rotate.classList.add("off"));
+
+/* ---------------- 流程控制 ---------------- */
+function startGame() {
+  state = "play"; stateT = 0;
+  mover = "kaveh"; watcher = "haitham";
+  moverX = MOVER_START_X;
+  score = { haitham: 0, kaveh: 0 };
+  hearts = 3; round = 1; caughtCount = 0;
+  particles = [];
+  scheduleShut(0.6);
+  AudioFX.swap();
+}
+
+function scheduleShut(extra, allowGlance) {
+  // 闭眼时长随难度缩短（有下限）；距离很近时他更警觉，但不会碎成频闪
+  let d = rand(1.6, 2.6) - Math.min(0.7, (round - 1) * 0.09);
+  if (TOUCH_X - moverX < 230) d *= NEAR_FACTOR;
+  watcherSt.phase = "shut";
+  watcherSt.t = 0;
+  watcherSt.shutDur = Math.max(MIN_SHUT, d) + (extra || 0);
+  watcherSt.openDur = Math.min(0.9 + (round - 1) * 0.08, 1.6);
+  watcherSt.glanceDone = false;
+  watcherSt.openIsGlance = false;
+  if (allowGlance === false) {
+    // 刚偷看完：这一段闭眼不再掷新的偷看，否则会变成连续频闪
+    watcherSt.glances = 0;
+    watcherSt.glanceAt = -1;
+  } else {
+    // 第 3 轮起偶尔"假动作 / 偷看"，每个闭眼周期最多一次
+    const chance = round >= 3 ? Math.min(0.22 + (round - 3) * 0.08, 0.5) : 0;
+    watcherSt.glances = Math.random() < chance ? 1 : 0;
+    watcherSt.glanceAt = watcherSt.glances ? rand(0.4, Math.max(0.6, watcherSt.shutDur - 0.4)) : -1;
+  }
+  tlog("闭眼开始 shutDur=" + watcherSt.shutDur.toFixed(2) + " openDur=" + watcherSt.openDur.toFixed(2)
+    + " glances=" + watcherSt.glances + " (extra=" + (extra || 0) + ")");
+}
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function onCaught() {
+  state = "caught"; stateT = 0;
+  hearts--; caughtCount++;
+  shake = 14; flash = 0.55;
+  AudioFX.caught();
+  burst(moverX, GROUND_Y - SPR_H / 2, "#e0605a", 14);
+  moverX = MOVER_START_X;          // 退回起点（否则会一直贴在他旁边，节奏会越逼越紧）
+  openMoveAcc = 0;
+}
+
+function onClear() {
+  state = "clear"; stateT = 0;
+  score[mover]++;
+  prizeProgress++;
+  if (PERSIST) localStorage.setItem("mtr_prize_prog", String(prizeProgress));
+  if (prizeProgress >= PRIZE_EVERY) {
+    prizeProgress = 0;
+    if (PERSIST) localStorage.setItem("mtr_prize_prog", "0");
+    grantPrize();
+  }
+  AudioFX.clear();
+  burst(TOUCH_X + 60, GROUND_Y - SPR_H * 0.6, "#ffd76e", 18);
+}
+
+function burst(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = 40 + Math.random() * 130;
+    particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: 0.5 + Math.random() * 0.5, t: 0, color });
+  }
+}
+
+/* ---------------- 主循环 ----------------
+   固定步长(1/60s)模拟 + 累积器：由 rAF 与 250ms 心跳双驱动，
+   时间一律取自 performance.now()，因此真实浏览器与无头/虚拟时间环境都正确推进。 */
+const STEP = 1 / 60;
+let acc = 0, lastNow = null;
+function tick() {
+  const now = performance.now();
+  const dtMs = lastNow === null ? 0 : Math.min(now - lastNow, 1000);
+  lastNow = now;
+  acc += dtMs / 1000;
+  if (paused) acc = 0;               // 暂停时不累积，恢复后不会"补帧"
+  let guard = 0;
+  while (acc >= STEP && guard++ < 240) { update(STEP); acc -= STEP; }
+  render(0, now / 1000);
+}
+
+function update(dt) {
+  if (collectionOpen) return;        // 图鉴打开时游戏暂停
+  if (paused) return;                // ESC / 暂停按钮
+  gameTime += dt;
+  shake = Math.max(0, shake - dt * 40);
+  flash = Math.max(0, flash - dt * 1.6);
+  dangerGlow = lerp(dangerGlow, watcherSt.phase === "open" && state === "play" ? 1 : 0, dt * 8);
+
+  for (const p of particles) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt; }
+  particles = particles.filter((p) => p.t < p.life);
+
+  if (state === "play") updatePlay(dt);
+  else if (state === "caught" || state === "clear" || state === "prize" || state === "swap" || state === "over") {
+    stateT += dt;
+    if (state === "swap") {
+      // 换人：新的移动者从闭眼者身边走回起点（动画放在 update 里，渲染不再改状态）
+      const k = clamp(stateT / SWAP_T, 0, 1);
+      moverX = lerp(WATCHER_X, MOVER_START_X, k * k * (3 - 2 * k));
+    }
+    if (state === "caught" && stateT >= CAUGHT_T) {
+      if (hearts <= 0) { state = "over"; stateT = 0; const total = score.haitham + score.kaveh; if (total > best) { best = total; localStorage.setItem("mtr_best", best); } }
+      else { state = "play"; scheduleShut(0.5); }
+      tlog("被抓后恢复 -> " + state);
+    }
+    if (state === "clear" && stateT >= CLEAR_T) {
+      if (pendingPrize) { state = "prize"; stateT = 0; AudioFX.prize(); }
+      else doSwap();
+    }
+    if (state === "prize" && stateT >= PRIZE_T) {
+      pendingPrize = false;
+      doSwap();
+    }
+    if (state === "swap" && stateT >= SWAP_T) {
+      state = "play"; stateT = 0;
+      moverX = MOVER_START_X;
+      scheduleShut(0.4);
+    }
+  }
+}
+
+function doSwap() {
+  const oldMover = mover;
+  mover = watcher; watcher = oldMover; round++;
+  state = "swap"; stateT = 0;
+  tlog("换人 -> 新的闭眼者 " + CHARS[watcher].name);
+  AudioFX.swap();
+}
+
+function updatePlay(dt) {
+  /* --- 闭眼者状态机 --- */
+  watcherSt.t += dt;
+  if (watcherSt.phase === "shut") {
+    if (watcherSt.glances && !watcherSt.glanceDone && watcherSt.t >= watcherSt.glanceAt) {
+      watcherSt.phase = "open"; watcherSt.t = 0;
+      watcherSt.openDur = 0.22; watcherSt.glanceDone = true;
+      watcherSt.openIsGlance = true;
+      openMoveAcc = 0;                 // 偷看是独立的一次睁眼，位移重新计
+      tlog("偷看 0.22s");
+      AudioFX.glance();
+    } else if (watcherSt.t >= watcherSt.shutDur) {
+      watcherSt.phase = "turning"; watcherSt.t = 0;
+      AudioFX.turning();
+    }
+  } else if (watcherSt.phase === "turning") {
+    if (watcherSt.t >= TURNING_T) {
+      watcherSt.phase = "open"; watcherSt.t = 0;
+      watcherSt.openIsGlance = false;
+      openMoveAcc = 0;
+      tlog("睁眼 " + watcherSt.openDur.toFixed(2) + "s");
+      AudioFX.open();
+    }
+  } else if (watcherSt.phase === "open") {
+    if (watcherSt.t >= watcherSt.openDur) {
+      scheduleShut(0, !watcherSt.openIsGlance);   // 偷看之后不再连掷偷看
+    }
+  }
+
+  /* --- 移动者 --- */
+  let dir = 0;
+  if (DEMO) {
+    if (watcherSt.phase === "shut") dir = 1;                 // 完美玩家：闭眼才走
+    else if (DEMO >= 2) dir = 1;                             // 测试被抓：睁眼也硬闯
+  } else {
+    dir = (inputRight() ? 1 : 0) - (inputLeft() ? 1 : 0);
+  }
+  const moving = dir !== 0;
+  const frozen = !moving;
+
+  if (moving) {
+    const prevX = moverX;
+    moverX = clamp(moverX + dir * SPEED * dt, MOVER_START_X, TOUCH_X);
+    const dx = Math.abs(moverX - prevX);
+    // 睁眼后的极短宽限期内的位移不计，给玩家一个可反应的窗口
+    if (watcherSt.phase === "open" && watcherSt.t > OPEN_GRACE) {
+      openMoveAcc += dx;
+      if (openMoveAcc > CATCH_PX) { onCaught(); return; }
+    }
+    stepTimer -= dt;
+    if (stepTimer <= 0) { AudioFX.step(); stepTimer = 0.22; }
+  }
+  moverBlinkHold = frozen;
+
+  if (moverX >= TOUCH_X) { onClear(); return; }
+
+  /* 移动者跑动时的随机眨眼（定住时本来就闭眼屏息） */
+  blinkTimer -= dt;
+  if (blinkTimer <= 0) { blinkOn = 0.12; blinkTimer = rand(1.6, 4.2); }
+  if (blinkOn > 0) blinkOn -= dt;
+}
+
+/* ---------------- 绘制辅助 ---------------- */
+function drawSprite(chKey, pose, cx, feetY, opts) {
+  // pose: "open" | "shut" | "shutDim"
+  const img = CHARS[chKey][pose];
+  if (!img) return;
+  const o = opts || {};
+  const s = o.scale || 1;
+  const w = SPR_W * s, h = SPR_H * s;
+  const bob = o.bob ? -Math.abs(Math.sin(o.bobT * 11)) * 7 : 0;
+  const ox = o.ox || 0;
+  ctx.drawImage(img, Math.round(cx - w / 2 + ox), Math.round(feetY - h + bob), Math.round(w), Math.round(h));
+}
+
+function text(str, x, y, size, color, align, weight) {
+  ctx.fillStyle = color || "#e8e2d5";
+  ctx.font = (weight || 700) + " " + size + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign = align || "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(3, size / 6);
+  ctx.strokeStyle = "rgba(40,28,52,0.45)";
+  ctx.strokeText(str, x, y);
+  ctx.fillText(str, x, y);
+}
+
+/* ---------------- 场景 ---------------- */
+let skyGrad = null;
+let bgImg = null;
+function buildSky() {
+  skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, "#121022");
+  skyGrad.addColorStop(0.65, "#1c1832");
+  skyGrad.addColorStop(1, "#251f38");
+}
+buildSky();
+
+function drawScene(t) {
+  if (bgImg && bgImg.width) {
+    // 手绘黄昏像素风景，cover 铺满（缩小缩放用平滑，避免像素破碎）
+    const s = Math.max(W / bgImg.width, H / bgImg.height);
+    const dw = bgImg.width * s, dh = bgImg.height * s;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bgImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    ctx.imageSmoothingEnabled = false;
+    // 轻压一层，让角色和文字更突出
+    ctx.fillStyle = "rgba(24,18,44,0.16)";
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    // 背景图缺失时回退夜空
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+    ctx.fillStyle = "#231d33";
+    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  }
+
+  // 闭眼者脚下的聚光
+  const g = ctx.createRadialGradient(WATCHER_X, GROUND_Y, 10, WATCHER_X, GROUND_Y, 130);
+  g.addColorStop(0, "rgba(255,240,200,0.10)");
+  g.addColorStop(1, "rgba(255,240,200,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(WATCHER_X - 140, GROUND_Y - 40, 280, 200);
+}
+
+/* ---------------- 渲染 ---------------- */
+function render(dt, t) {
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+
+  drawScene(t);
+
+  if (state === "title") { renderTitle(dt, t); if (collectionOpen) renderCollection(); syncUI(); ctx.restore(); return; }
+
+  /* 角色影子 */
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath(); ctx.ellipse(moverX, GROUND_Y + 6, 62, 10, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(WATCHER_X, GROUND_Y + 6, 66, 10, 0, 0, 7); ctx.fill();
+
+  /* 移动者 */
+  const mChar = CHARS[mover];
+  let mPose = "open", mBob = true, mBobT = t;
+  if (state === "play") {
+    if (moverBlinkHold) { mPose = "shut"; mBob = false; }          // 定住屏息
+    else if (blinkOn > 0) { mPose = "shut"; mBob = true; }          // 跑动中偶尔眨眼
+  } else if (state === "swap") {
+    // 位置由 update 里的换人动画驱动，这里只保持跑动姿态
+    mBob = true;
+  } else if (state === "caught") {
+    mBob = false;                                                    // 惊恐僵住
+  } else if (state === "clear") {
+    mBob = true;
+  }
+  const mOx = state === "caught" ? Math.sin(t * 30) * 2 : 0;
+  drawSprite(mover, mPose, moverX, GROUND_Y, { bob: mBob, bobT: mBobT, ox: mOx });
+  if (state === "caught") text("!", moverX, GROUND_Y - SPR_H - 26, 40, "#ff5b4d");
+
+  /* 闭眼者 */
+  let wPose = "shut", wScale = 1, wOx = 0;
+  if (watcherSt.phase === "shut") wPose = "shutDim";
+  else if (watcherSt.phase === "turning") { wPose = "shutDim"; wOx = Math.sin(t * 40) * 3; }
+  else { wPose = "open"; wScale = 1.06; }
+  drawSprite(watcher, wPose, WATCHER_X, GROUND_Y, { scale: wScale, ox: wOx });
+
+  if (watcherSt.phase === "open" && state === "play") {
+    const pop = 1 + Math.max(0, 0.4 - watcherSt.t) * 1.5;
+    text("!", WATCHER_X + 20, GROUND_Y - SPR_H - 24 / pop, Math.round(38 * pop), "#ffd76e");
+  }
+  if (watcherSt.phase === "turning" && state === "play") {
+    text("……", WATCHER_X + 46, GROUND_Y - SPR_H - 22, 20, "rgba(232,226,213,0.75)");
+  }
+
+  /* 粒子 */
+  for (const p of particles) {
+    ctx.globalAlpha = clamp(1 - p.t / p.life, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(Math.round(p.x) - 2, Math.round(p.y) - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+
+  /* 睁眼时的危险红晕 */
+  if (dangerGlow > 0.02) {
+    const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.75);
+    v.addColorStop(0, "rgba(160,40,40,0)");
+    v.addColorStop(1, "rgba(160,40,40," + (0.28 * dangerGlow).toFixed(3) + ")");
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  drawHUD(t);
+
+  /* 状态横幅 */
+  if (state === "caught") {
+    banner("被发现了！" + CHARS[mover].name + " 退回起点（还剩 " + Math.max(hearts, 0) + " 颗心）");
+  } else if (state === "clear") {
+    banner("碰到啦！" + CHARS[mover].name + " 摸到了 " + CHARS[watcher].name + "，换人！");
+  } else if (state === "swap") {
+    banner("第 " + round + " 轮：现在轮到 " + CHARS[watcher].name + " 闭眼，" + CHARS[mover].name + " 去碰他");
+  } else if (state === "prize") {
+    renderPrize();
+  } else if (state === "over") {
+    renderOver();
+  } else if (state === "play") {
+    // 首轮操作提示
+    if (round === 1 && score[mover] === 0 && caughtCount === 0) {
+      const hint = watcherSt.phase === "shut"
+        ? "他闭眼了 —— 按住 → 悄悄往前走"
+        : watcherSt.phase === "turning" ? "他要回头了……" : "别动！！！";
+      text(hint, W / 2, 96, 22, watcherSt.phase === "shut" ? "#bfe08a" : "#ff9d8a");
+    }
+  }
+
+  /* 被抓红闪 */
+  if (flash > 0) {
+    ctx.fillStyle = "rgba(200,50,40," + (flash * 0.5).toFixed(3) + ")";
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+  }
+
+  if (collectionOpen) renderCollection();
+
+  syncUI();
+  ctx.restore();
+}
+
+/* ---------------- 奖品展示与图鉴 ---------------- */
+function drawPrizeIcon(p, cx, cy, scale, maxW, maxH) {
+  const el = p.el;
+  if (!el) return;
+  let w = el.width * scale, h = el.height * scale;
+  const k = Math.min(1, (maxW || w) / w, (maxH || h) / h);   // 大图自动缩小，避免撑出卡片
+  w *= k; h *= k;
+  ctx.drawImage(el, Math.round(cx - w / 2), Math.round(cy - h / 2), Math.round(w), Math.round(h));
+}
+
+function wrapText(str, x, y, maxChars, size, color) {
+  const chars = [...str];
+  for (let i = 0; i < chars.length; i += maxChars) {
+    text(chars.slice(i, i + maxChars).join(""), x, y + (i / maxChars) * (size + 7), size, color, "center", 400);
+  }
+}
+
+function renderPrize() {
+  const p = lastPrize;
+  if (!p) return;
+  ctx.fillStyle = "rgba(10,8,20,0.74)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(32,26,56,0.95)";
+  roundRect(W / 2 - 250, 92, 500, 336, 18);
+  ctx.strokeStyle = "rgba(255,215,110,0.5)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(W / 2 - 250, 92, 500, 336);
+  text("获得奖品！", W / 2, 134, 24, "#ffd76e");
+  drawPrizeIcon(p, W / 2, 232, 9, 320, 160);
+  text(p.name, W / 2, 318, 26, "#f3ecdd");
+  wrapText(p.desc, W / 2, 354, 24, 15, "rgba(230,224,210,0.85)");
+  text("已收入奖品图鉴 · 按 T 查看（点击继续）", W / 2, 408, 13, "rgba(207,199,184,0.55)", "center", 400);
+}
+
+function renderCollection() {
+  ctx.fillStyle = "rgba(10,8,20,0.92)";
+  ctx.fillRect(0, 0, W, H);
+  text("奖品图鉴", W / 2, 52, 30, "#f3ecdd");
+  text("累计碰对方 " + PRIZE_EVERY + " 次抽一次奖 · 已收集 " + unlocked.length + " / " + PRIZES.length,
+    W / 2, 88, 15, "rgba(207,199,184,0.7)", "center", 400);
+  const cw = 208, ch = 172, gap = 16;
+  const x0 = (W - 4 * cw - 3 * gap) / 2, y0 = 108;
+  PRIZES.forEach((p, i) => {
+    const col = i % 4, row = Math.floor(i / 4);
+    const x = x0 + col * (cw + gap), y = y0 + row * (ch + gap);
+    const has = unlocked.includes(p.id);
+    ctx.fillStyle = has ? "rgba(46,38,72,0.92)" : "rgba(26,22,42,0.92)";
+    roundRect(x, y, cw, ch, 12);
+    if (has) { ctx.strokeStyle = "rgba(255,215,110,0.45)"; ctx.lineWidth = 1.5; ctx.strokeRect(x, y, cw, ch); }
+    const cx = x + cw / 2;
+    if (has) {
+      drawPrizeIcon(p, cx, y + 52, 5, cw - 44, 78);
+      text(p.name, cx, y + 100, 16, "#f3ecdd");
+      wrapText(p.desc, cx, y + 122, 14, 12, "rgba(220,214,200,0.8)");
+    } else {
+      text("？", cx, y + 52, 40, "rgba(255,255,255,0.16)");
+      text("？？？", cx, y + 100, 16, "rgba(255,255,255,0.3)");
+      wrapText("还没有拿到过，继续加油碰对方吧", cx, y + 122, 14, 12, "rgba(220,214,200,0.4)");
+    }
+  });
+  text("按 T 或点击画面关闭", W / 2, 520, 13, "rgba(207,199,184,0.5)", "center", 400);
+}
+
+function banner(msg) {
+  ctx.fillStyle = "rgba(10,8,20,0.72)";
+  const w = ctx.measureText(msg).width;
+  roundRect(W / 2 - Math.max(320, w * 0.62) / 2, 120, Math.max(320, w * 0.62), 52, 12);
+  text(msg, W / 2, 147, 21, "#f3ecdd");
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.fill();
+}
+
+function drawHUD(t) {
+  /* 心 */
+  for (let i = 0; i < 3; i++) {
+    const x = 30 + i * 34;
+    drawHeart(x, 30, i < hearts ? "#d84a3f" : "rgba(255,255,255,0.14)");
+  }
+  /* 轮次与状态 */
+  const status = watcherSt.phase === "open" ? CHARS[watcher].name + "正盯着你！"
+    : watcherSt.phase === "turning" ? CHARS[watcher].name + "要回头……"
+    : CHARS[watcher].name + "闭眼背身中";
+  text("第 " + round + " 轮 · " + status, W / 2, 30, 18, "#cfc7b8");
+  /* 比分 */
+  text(CHARS.haitham.name + " " + score.haitham + " : " + score.kaveh + " " + CHARS.kaveh.name, W - 30, 30, 18, "#cfc7b8", "right");
+  /* 进度条 */
+  const bw = 300, bx = W / 2 - bw / 2, by = 52;
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  roundRect(bx, by, bw, 8, 4);
+  const p = clamp((moverX - MOVER_START_X) / (TOUCH_X - MOVER_START_X), 0, 1);
+  ctx.fillStyle = CHARS[mover].tint;
+  roundRect(bx, by, Math.max(8, bw * p), 8, 4);
+  /* 奖品进度（左上，心形下方）：每 5 次成功抽一次奖 */
+  for (let i = 0; i < PRIZE_EVERY; i++) {
+    ctx.fillStyle = i < prizeProgress ? "#ffd76e" : "rgba(255,255,255,0.18)";
+    ctx.fillRect(30 + i * 15, 50, 11, 11);
+  }
+  text("奖品 " + prizeProgress + "/" + PRIZE_EVERY, 30 + PRIZE_EVERY * 15 + 8, 56, 12, "#f0ebdc", "left", 400);
+  /* 音效提示 */
+  text(AudioFX.muted ? "音乐/音效 关 (M)" : "音乐/音效 开 (M)", W - 24, H - 22, 13, "rgba(207,199,184,0.45)", "right", 400);
+}
+
+function drawHeart(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 2, y - 4, 4, 4);
+  ctx.fillRect(x + 2, y - 4, 4, 4);
+  ctx.fillRect(x - 5, y - 1, 14, 5);
+  ctx.fillRect(x - 3, y + 4, 10, 3);
+  ctx.fillRect(x, y + 7, 4, 3);
+}
+
+/* ---------------- 标题画面 ---------------- */
+function renderTitle(dt, t) {
+  for (const k of ["haitham", "kaveh"]) {
+    const b = titleBlink[k];
+    b.t -= dt;
+    if (b.t <= 0) { b.on = 0.13; b.t = rand(1.4, 4); }
+    if (b.on > 0) b.on -= dt;
+  }
+  const cx = W / 2, cy = GROUND_Y - 24;
+  const bob = Math.sin(t * 2.2) * 6;
+  drawSprite("haitham", titleBlink.haitham.on > 0 ? "shut" : "open", cx - 220, cy, { bob: true, bobT: t + 1 });
+  drawSprite("kaveh", titleBlink.kaveh.on > 0 ? "shut" : "open", cx + 220, cy, { bob: true, bobT: t });
+
+  ctx.fillStyle = "rgba(10,8,20,0.65)";
+  roundRect(W / 2 - 330, 64, 660, 150, 14);
+  text("一二三，木头人", W / 2, 104, 40, "#f3ecdd");
+  text("小苹果篇", W / 2, 148, 18, "#b8ad99", "center", 400);
+  text("他闭眼时，你往前挪；他一睁眼，你立刻定住。", W / 2, 182, 17, "#cfc7b8", "center", 400);
+  text("碰到他就换人。被抓一次退回起点并掉一颗心，3 颗心掉光就输了。", W / 2, 206, 15, "rgba(207,199,184,0.65)", "center", 400);
+
+  ctx.globalAlpha = 0.6 + 0.4 * (Math.sin(t * 3) * 0.5 + 0.5);
+  text("点击画面 或 按任意键 开始", W / 2, 340, 22, "#ffd76e");
+  ctx.globalAlpha = 1;
+  text(TOUCH_MODE
+      ? "按住屏幕左右半边移动 · 右上角可暂停 / 重来 / 看图鉴"
+      : "键盘 ←→ / A D 移动 · ESC 暂停 · R 重来 · T 图鉴 · M 静音",
+    W / 2, 492, 14, "rgba(207,199,184,0.6)", "center", 400);
+  if (best > 0) text("最佳纪录：" + best + " 次成功", W / 2, 514, 14, "rgba(207,199,184,0.5)", "center", 400);
+}
+
+/* ---------------- 结算画面 ---------------- */
+function renderOver() {
+  ctx.fillStyle = "rgba(8,6,16,0.78)";
+  ctx.fillRect(0, 0, W, H);
+  text("被抓住了……", W / 2, 150, 42, "#ff8a7a");
+  text(CHARS[mover].name + " 没能碰到 " + CHARS[watcher].name, W / 2, 205, 20, "#cfc7b8", "center", 400);
+  text("本轮比分　海森 " + score.haitham + " : " + score.kaveh + " 卡维", W / 2, 258, 24, "#f3ecdd");
+  text("成功次数 " + (score.haitham + score.kaveh) + " · 最佳纪录 " + best, W / 2, 296, 17, "rgba(207,199,184,0.7)", "center", 400);
+  if (Math.sin(stateT * 3) > -0.3) text("按 R 或点击画面 再来一局", W / 2, 360, 20, "#ffd76e");
+}
+
+/* ---------------- 资源加载 ---------------- */
+function loadAssets() {
+  const jobs = [];
+  jobs.push(new Promise((res) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = "assets/bg.png";
+  }).then((img) => { bgImg = img; }));
+  for (const p of PRIZES) {
+    if (!p.img) continue;
+    jobs.push(new Promise((res) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => res(null);
+      img.src = p.img;
+    }).then((img) => { p.el = img; }));
+  }
+  for (const key of Object.keys(CHARS)) {
+    for (const pose of ["open", "shut"]) {
+      jobs.push(new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = "assets/" + key + "_" + pose + ".png";
+      }).then((img) => { CHARS[key][pose] = img; }));
+    }
+  }
+  return Promise.all(jobs).then(() => {
+    // 预生成"闭眼背身"调暗版本（夜间背影）
+    for (const key of Object.keys(CHARS)) {
+      const src = CHARS[key].shut;
+      const off = document.createElement("canvas");
+      off.width = src.width; off.height = src.height;
+      const oc = off.getContext("2d");
+      oc.drawImage(src, 0, 0);
+      oc.globalCompositeOperation = "source-atop";
+      oc.fillStyle = "rgba(18,14,34,0.45)";
+      oc.fillRect(0, 0, off.width, off.height);
+      CHARS[key].shutDim = off;
+    }
+  });
+}
+
+loadAssets().then(() => {
+  if (Q.has("trace")) console.log("[prize-el] " + PRIZES.map((p) => p.id + "=" + (p.el ? p.el.width + "x" + p.el.height : "NULL")).join(" "));
+  if (Q.has("autostart")) startGame();
+  if (Q.has("paused")) { paused = true; }   // 测试用：直接以暂停态进入
+  applyMute();
+  syncUI();
+  tick();
+  requestAnimationFrame(function loop() { tick(); requestAnimationFrame(loop); });
+  setInterval(tick, 250);
+});
+</script>
+</body>
+</html>
